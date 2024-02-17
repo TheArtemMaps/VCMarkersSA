@@ -48,6 +48,9 @@ CdeclEvent    <AddressList<0x53DF40, H_CALL>, PRIORITY_BEFORE, ArgPickNone, void
 #define PI (float)M_PI
 #define TWOPI (PI*2)
 inline float sq(float x) { return x * x; }
+// Settings stuff
+bool ReplaceEntranceMarkers = false;
+bool MagentaMarkers = false;
 
 
 class VCMarker : public C3dMarker
@@ -90,7 +93,6 @@ public:
 	RwRGBA ToRwRGBA() const;
 };
 
-bool ReplaceEntranceMarkers = false;
 float		VCMarkers::m_PosZMult;
 const float	VCMarkers::m_MovingMultiplier = 0.40f;
 void
@@ -125,6 +127,7 @@ VCMarkers::Init(void)
 		marker++;
 	}
 	ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
+	MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 	memset(m_pRpClumpArray, 0, sizeof(RpClump * [7]));
 	NumActiveMarkers = 0;
 	m_angleDiamond = 0.0f;
@@ -138,7 +141,6 @@ VCMarkers::Init(void)
 	m_pRpClumpArray[0] = LoadMarker("diamond_3");
 	m_pRpClumpArray[6] = m_pRpClumpArray[0];
 	m_pRpClumpArray[5] = LoadMarker("arrow");
-	CVisibilityPlugins::SetClumpAlpha(m_pRpClumpArray[5], 1);
 	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting new game
 	CTxdStore::PopCurrentTxd();
 }
@@ -209,9 +211,14 @@ VCMarkers::Render(void)
 
 void VCMarkers::PlaceMarkerSet(unsigned int nIndex, unsigned short markerID, CVector& vecPos, float fSize, unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha, unsigned short pulsePeriod, float pulseFraction)
 {
+	uint8_t r, g, b;
+	if (MagentaMarkers)
+	r = 255, g = 0, b = 255;
+	else
+	r = red, g = green, b = blue;
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, 1, 0.0, 0.0, 0.0, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.9f, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, -1, 0.0, 0.0, 0.0, false);
-	PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, m_colDiamond, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
+	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, m_colDiamond, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, alpha, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.93f, red, green, blue, alpha, pulsePeriod, pulseFraction, 2, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.86f, red, green, blue, alpha, pulsePeriod, pulseFraction, -1, 0.0f, 0.0f, 0.0f, false);
@@ -329,7 +336,7 @@ class VCMarkersSA {
 public:
 	VCMarkersSA() {
 		// Добавьте здесь код инициализации плагина
-		Events::initGameEvent += []() {
+		Events::initRwEvent += []() {
 			using namespace Memory;
 			//VCMarkers::Init();
 
@@ -338,7 +345,7 @@ public:
 			InjectHook(0x726AE4, VCMarkers::Render);
 			//InjectHook(0x722710, VCMarkers::Shutdown, PATCH_JUMP);
 			//InjectHook(0x7227B0, VCMarkers::Update);
-			//*(uint8_t*)0x8D5D8B = 0xD1;	// cone marker alpha
+			*(uint8_t*)0x8D5D8B = 0xD1;	// cone marker alpha
 			// Spheres colours
 			//dwFunc = 0x4810E0 + 0x2B;
 			//	patch(dwFunc, MARKER_SET_COLOR_A, 4);
@@ -378,14 +385,15 @@ public:
 			VCMarkers::Shutdown();
 		};
 
-		Events::gameProcessEvent += []() {
-			VCMarkers::Update();
-		};
+		//Events::gameProcessEvent += []() {
+		//	VCMarkers::Update();
+		//};
 
-		Events::reInitGameEvent += []() {
+		Events::reInitGameEvent += []() { // To reload ini file by loading your save file
 			ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
+			MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 		};
-  //  movingThingsEvent += []() {
+   // movingThingsEvent += []() {
     //    VCMarkers::Render();
    // };
     }
