@@ -9,6 +9,9 @@
 #include "C3dMarkers.h"
 #include <game_sa/CStreaming.h>
 #include <game_sa/CModelInfo.h>
+#include "CZone.h"
+#include <CSprite2d.h>
+#include <game_sa/CWorld.h>
 using namespace plugin;
 // Events for rendering markers (movingThingsEvent works, but it should be RenderSpecialFxEvent, but it doesn't work???)
 CdeclEvent    <AddressList<0x726AD0, H_CALL>, PRIORITY_AFTER, ArgPickNone, void()> RenderSpecialFxEvent;
@@ -37,6 +40,23 @@ CdeclEvent    <AddressList<0x53DF40, H_CALL>, PRIORITY_BEFORE, ArgPickNone, void
     ((_atomic)->renderCallBack(_atomic))
 #define RpAtomicRender(_atomic) \
     RpAtomicRenderMacro(_atomic)
+void
+PushRendergroup(const char* name)
+{
+	static WCHAR tmp[256];
+	MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, name, -1, tmp, sizeof(tmp));
+	D3DPERF_BeginEvent(0xFFFFFFFF, tmp);
+
+}
+
+void
+PopRendergroup(void)
+{
+	D3DPERF_EndEvent();
+}
+
+#define PUSH_RENDERGROUP(str) PushRendergroup(str)
+#define POP_RENDERGROUP() PopRendergroup()
 // Sphere colors and pulse settings
 #define SPHERE_MARKER_R (0)
 #define SPHERE_MARKER_G (128)
@@ -51,7 +71,6 @@ inline float sq(float x) { return x * x; }
 // Settings stuff
 bool ReplaceEntranceMarkers = false;
 bool MagentaMarkers = false;
-
 
 class VCMarker : public C3dMarker
 {
@@ -95,12 +114,12 @@ public:
 
 float		VCMarkers::m_PosZMult;
 const float	VCMarkers::m_MovingMultiplier = 0.40f;
+
 void
 VCMarkers::Init(void)
 {
 	int i = {};
 	C3dMarker* marker;
-
 	marker = m_aMarkerArray;
 	// Init array
 	for (i = 0; i < MAX_NUM_3DMARKERS; i++) {
@@ -141,7 +160,7 @@ VCMarkers::Init(void)
 	m_pRpClumpArray[0] = LoadMarker("diamond_3");
 	m_pRpClumpArray[6] = m_pRpClumpArray[0];
 	m_pRpClumpArray[5] = LoadMarker("arrow");
-	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting new game
+	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting a new game
 	CTxdStore::PopCurrentTxd();
 }
 
@@ -164,58 +183,53 @@ VCMarkers::Render(void)
 	for (marker = m_aMarkerArray; marker < &m_aMarkerArray[MAX_NUM_3DMARKERS]; marker++) {
 		CVector pos = marker->m_mat.GetPosition();
 		if (marker->m_bIsUsed) {
-		if (marker->m_fCameraRange < 150.0f || IgnoreRenderLimit || marker->m_nType == MARKER3D_TORUS) {
-			marker->Render();
-			if (marker->m_nType == MARKER3D_CYLINDER) {
-				marker->m_mat.RotateZ(DEGTORAD(marker->m_nRotateRate * CTimer::ms_fTimeStep));
-				marker->m_mat.GetPosition() = pos;
-			}
-			if (ReplaceEntranceMarkers) {
-				if (marker->m_nType == MARKER3D_CONE) { // For entry/exit markers
-					marker->m_mat.RotateZ(DEGTORAD(PI * CTimer::ms_fTimeStep));
-					marker->m_mat.GetPosition() = pos;
-				}
-			}
-			if (marker->m_nType == MARKER3D_CONE) {
-				if (marker->m_nRotateRate != 0) {
+			if (marker->m_fCameraRange < 150.0f || IgnoreRenderLimit || marker->m_nType == MARKER3D_TORUS) {
+				reinterpret_cast<VCMarker*>(marker)->Render();
+				if (marker->m_nType == MARKER3D_CYLINDER) {
 					marker->m_mat.RotateZ(DEGTORAD(marker->m_nRotateRate * CTimer::ms_fTimeStep));
 					marker->m_mat.GetPosition() = pos;
 				}
+				if (ReplaceEntranceMarkers) {
+					if (marker->m_nType == MARKER3D_CONE) { // For entry/exit markers
+						marker->m_mat.RotateZ(DEGTORAD(PI * CTimer::ms_fTimeStep));
+						marker->m_mat.GetPosition() = pos;
+					}
+				}
 
+				if (marker->m_nType == MARKER3D_CONE) {
+					if (marker->m_nRotateRate != 0) {
+						marker->m_mat.RotateZ(DEGTORAD(marker->m_nRotateRate * CTimer::ms_fTimeStep));
+						marker->m_mat.GetPosition() = pos;
+					}
+				}
+				
+				if (marker->m_nType == MARKER3D_CONE) {
+					CCoronas::RegisterCorona(reinterpret_cast<unsigned int>(marker) + 50 + 6 + (ReplaceEntranceMarkers ? 0 : 2), nullptr,
+						marker->m_colour.r, marker->m_colour.g, marker->m_colour.b, 192,
+						marker->m_mat.GetPosition(), 1.2f * marker->m_fSize, TheCamera.m_fLODDistMultiplier * 50.0f,
+						CORONATYPE_SHINYSTAR, FLARETYPE_NONE, true, false, 1, 0.0f, false, 1.5f, false, 255.0f, false, true);
 
-				CCoronas::RegisterCorona(reinterpret_cast<unsigned int>(marker) + 50 + 6 + (ReplaceEntranceMarkers ? 0 : 2), nullptr,
-					marker->m_colour.r, marker->m_colour.g, marker->m_colour.b, 192,
-					marker->m_mat.GetPosition(), 1.2f * marker->m_fSize, TheCamera.m_fLODDistMultiplier * 50.0f,
-					CORONATYPE_SHINYSTAR, FLARETYPE_NONE, true, false, 1, 0.0f, false, 1.5f, false, 255.0f, false, true);
-			}
-		}
-		NumActiveMarkers++;
-		marker->m_bIsUsed = false;
-		}
-		else {
-			if (marker->m_pAtomic) {
-				marker->m_nIdentifier = 0;
-				marker->m_nStartTime = 0;
+				}
+				NumActiveMarkers++;
 				marker->m_bIsUsed = false;
-				marker->m_nType = MARKER3D_NA;
-				RwFrame* f = RpAtomicGetFrame(marker->m_pAtomic);
-				RpAtomicDestroy(marker->m_pAtomic);
-				RwFrameDestroy(f);
-				marker->m_pAtomic = nullptr;
+			}
+			else if (marker->m_pAtomic != NULL) {
+				marker->DeleteMarkerObject();
 			}
 		}
+		
+		DirectionArrowsDraw();
+		RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)alphafunc);
 	}
-	DirectionArrowsDraw();
-	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)alphafunc);
 }
 
 void VCMarkers::PlaceMarkerSet(unsigned int nIndex, unsigned short markerID, CVector& vecPos, float fSize, unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha, unsigned short pulsePeriod, float pulseFraction)
 {
 	uint8_t r, g, b;
 	if (MagentaMarkers)
-	r = 255, g = 0, b = 255;
+		r = 255, g = 0, b = 255;
 	else
-	r = red, g = green, b = blue;
+		r = red, g = green, b = blue;
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, 1, 0.0, 0.0, 0.0, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.9f, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, -1, 0.0, 0.0, 0.0, false);
 	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, m_colDiamond, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
@@ -240,38 +254,10 @@ RwRGBA RGBA::ToRwRGBA() const {
 	return { r, g, b, a };
 }
 
-void VCMarkers::Update(void) {
-	m_angleDiamond += CTimer::ms_fTimeStep * 5.0f;
-	C3dMarker* marker;
-	for (marker = m_aMarkerArray; marker < &m_aMarkerArray[MAX_NUM_3DMARKERS]; marker++) {
-		if (marker->m_bIsUsed) {
-			marker->m_mat.UpdateRW();
-			RwFrameUpdateObjects(RpAtomicGetFrame(marker->m_pAtomic));
-			marker->m_bMustBeRenderedThisFrame = true;
-		}
-	}
-}
-
-void VCMarkers::Shutdown() {
-	C3dMarker* marker;
-	for (marker = m_aMarkerArray; marker < &m_aMarkerArray[MAX_NUM_3DMARKERS]; marker++) {
-		marker->DeleteMarkerObject();
-	}
-
-	// Original code is retarded, this does the same, but better.
-	for (RpClump** clump = m_pRpClumpArray; clump < m_pRpClumpArray; clump++) {
-		if (clump) {
-			RpClumpForAllAtomics(*clump, RemoveRefsCB, nullptr);
-			RpClumpDestroy(*clump);
-
-			clump = nullptr;
-		}
-	}
-}
-
 void
 VCMarker::Render(void)
 {
+	//PUSH_RENDERGROUP("VCMarker::Render");
 	if (m_pAtomic == nullptr)
 		return;
 	if (m_nType == MARKER3D_CYLINDER)
@@ -289,9 +275,10 @@ VCMarker::Render(void)
 	const auto color = reinterpret_cast<RGBA&>(m_colour).ToRwRGBA();
 	RpMaterialSetColor(m_pMaterial, &color);
 	m_mat.UpdateRW();
-	CMatrix mat(m_mat);
-	mat.Scale(m_fSize);
-	mat.UpdateRW();
+	CMatrix matrix;
+	matrix.Attach(m_mat.m_pAttachMatrix, false);
+	matrix.Scale(m_fSize);
+	matrix.UpdateRW();
 	RwFrameUpdateObjects(RpClumpGetFrame(m_pAtomic));
 	SetBrightMarkerColours(m_fBrightness);
 	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)FALSE);
@@ -300,6 +287,7 @@ VCMarker::Render(void)
 	RpAtomicRender(m_pAtomic);
 	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)TRUE);
 	ReSetAmbientAndDirectionalColours();
+	//POP_RENDERGROUP();
 }
 long double VCMarker::CalculateRealSize()
 {
@@ -345,7 +333,7 @@ public:
 			InjectHook(0x726AE4, VCMarkers::Render);
 			//InjectHook(0x722710, VCMarkers::Shutdown, PATCH_JUMP);
 			//InjectHook(0x7227B0, VCMarkers::Update);
-			*(uint8_t*)0x8D5D8B = 0xD1;	// cone marker alpha
+		//*(uint8_t*)0x8D5D8B = 0xD1;	// cone marker alpha
 			// Spheres colours
 			//dwFunc = 0x4810E0 + 0x2B;
 			//	patch(dwFunc, MARKER_SET_COLOR_A, 4);
@@ -381,20 +369,10 @@ public:
 			Patch<uint8_t>(0x726DA6, 5);	// arrow (old cone) rotate rate
 			Patch(0x7232C1, &C3dMarkers::m_pRpClumpArray[0]);	// marker 0 (user marker)*/
 		};
-		Events::shutdownRwEvent += []() {
-			VCMarkers::Shutdown();
-		};
-
-		//Events::gameProcessEvent += []() {
-		//	VCMarkers::Update();
-		//};
 
 		Events::reInitGameEvent += []() { // To reload ini file by loading your save file
 			ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 			MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 		};
-   // movingThingsEvent += []() {
-    //    VCMarkers::Render();
-   // };
-    }
+	}
 } vCMarkersSA;
