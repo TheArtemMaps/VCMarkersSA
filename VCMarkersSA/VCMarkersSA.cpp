@@ -58,10 +58,16 @@ PopRendergroup(void)
 #define PUSH_RENDERGROUP(str) PushRendergroup(str)
 #define POP_RENDERGROUP() PopRendergroup()
 // Sphere colors and pulse settings
+// Blue
 #define SPHERE_MARKER_R (0)
 #define SPHERE_MARKER_G (128)
 #define SPHERE_MARKER_B (255)
 #define SPHERE_MARKER_A (128)
+// Pink
+#define MARKER_SET_COLOR_R	0xFC
+#define MARKER_SET_COLOR_G	0x8A
+#define MARKER_SET_COLOR_B	0xF2
+#define MARKER_SET_COLOR_A	0xE4
 #define SPHERE_MARKER_PULSE_PERIOD (2048)
 #define SPHERE_MARKER_PULSE_FRACTION (0.1f)
 // math stuff
@@ -155,11 +161,11 @@ VCMarkers::Init(void)
 	CTxdStore::SetCurrentTxd(CTxdStore::FindTxdSlot("particle"));
 	CFileMgr::ChangeDir("\\");
 	//LoadUser3dMarkers();
-	m_pRpClumpArray[1] = LoadMarker("cylinder");
-	m_pRpClumpArray[4] = LoadMarker("hoop");
-	m_pRpClumpArray[0] = LoadMarker("diamond_3");
-	m_pRpClumpArray[6] = m_pRpClumpArray[0];
-	m_pRpClumpArray[5] = LoadMarker("arrow");
+	m_pRpClumpArray[MARKER3D_CYLINDER] = LoadMarker("cylinder");
+	m_pRpClumpArray[MARKER3D_TORUS] = LoadMarker("hoop");
+	m_pRpClumpArray[MARKER3D_ARROW] = LoadMarker("diamond_3");
+	m_pRpClumpArray[MARKER3D_CONE_NO_COLLISION] = m_pRpClumpArray[MARKER3D_ARROW];
+	m_pRpClumpArray[MARKER3D_CONE] = LoadMarker("arrow");
 	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting a new game
 	CTxdStore::PopCurrentTxd();
 }
@@ -225,14 +231,14 @@ VCMarkers::Render(void)
 
 void VCMarkers::PlaceMarkerSet(unsigned int nIndex, unsigned short markerID, CVector& vecPos, float fSize, unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha, unsigned short pulsePeriod, float pulseFraction)
 {
-	uint8_t r, g, b;
+	uint8_t r, g, b, a;
 	if (MagentaMarkers)
-		r = 255, g = 0, b = 255;
+		r = MARKER_SET_COLOR_R, g = MARKER_SET_COLOR_G, b = MARKER_SET_COLOR_B, a = MARKER_SET_COLOR_A;
 	else
-		r = red, g = green, b = blue;
+		r = red, g = green, b = blue, a = alpha;
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, 1, 0.0, 0.0, 0.0, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.9f, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, -1, 0.0, 0.0, 0.0, false);
-	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, m_colDiamond, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
+	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, a, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, alpha, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.93f, red, green, blue, alpha, pulsePeriod, pulseFraction, 2, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.86f, red, green, blue, alpha, pulsePeriod, pulseFraction, -1, 0.0f, 0.0f, 0.0f, false);
@@ -265,20 +271,26 @@ VCMarker::Render(void)
 	else
 		RwRenderStateSet(rwRENDERSTATECULLMODE, (void*)rwCULLMODECULLBACK);
 	RwFrameUpdateObjects(RpAtomicGetFrame(m_pAtomic));
+	CRGBA color2 = m_colour;
+	if (MagentaMarkers)
+		color2.r = MARKER_SET_COLOR_R, color2.g = MARKER_SET_COLOR_G, color2.b = MARKER_SET_COLOR_B, color2.a = MARKER_SET_COLOR_A;
+	else
+		color2.r = m_colour.r, color2.g = m_colour.g, color2.b = m_colour.b, color2.a = m_colour.a;
 	switch (m_nType) {
-	case MARKER3D_ARROW:
 	case MARKER3D_CONE:
-	case MARKER3D_CONE_NO_COLLISION:
-		m_colour.a = 255;
+		m_colour.r = color2.r;
+		m_colour.g = color2.g;
+		m_colour.b = color2.b;
+		m_colour.a = color2.a;
 		break;
 	}
 	const auto color = reinterpret_cast<RGBA&>(m_colour).ToRwRGBA();
 	RpMaterialSetColor(m_pMaterial, &color);
 	m_mat.UpdateRW();
-	CMatrix matrix;
-	matrix.Attach(m_mat.m_pAttachMatrix, false);
-	matrix.Scale(m_fSize);
-	matrix.UpdateRW();
+	CMatrix mat;
+	mat.Attach(m_mat.m_pAttachMatrix, false);
+	mat.Scale(m_fSize);
+	mat.UpdateRW();
 	RwFrameUpdateObjects(RpClumpGetFrame(m_pAtomic));
 	SetBrightMarkerColours(m_fBrightness);
 	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)FALSE);
@@ -369,7 +381,6 @@ public:
 			Patch<uint8_t>(0x726DA6, 5);	// arrow (old cone) rotate rate
 			Patch(0x7232C1, &C3dMarkers::m_pRpClumpArray[0]);	// marker 0 (user marker)*/
 		};
-
 		Events::reInitGameEvent += []() { // To reload ini file by loading your save file
 			ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 			MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
