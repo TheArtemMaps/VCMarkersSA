@@ -77,6 +77,7 @@ inline float sq(float x) { return x * x; }
 // Settings stuff
 bool ReplaceEntranceMarkers = false;
 bool MagentaMarkers = false;
+bool MarkersTransparency = false;
 
 class VCMarker : public C3dMarker
 {
@@ -104,8 +105,6 @@ public:
 
 	static void					Init(void);
 	static void					Render(void);
-	static void					Update(void);
-	static void					Shutdown(void);
 	// Last unused param removed
 	static void					PlaceMarkerSet(unsigned int nIndex, unsigned short markerID, CVector& vecPos, float fSize, unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha, unsigned short pulsePeriod, float pulseFraction);
 	static void                 PlaceMarkerCone(int id, CVector& posn, float size, char r, char g, char b, int alpha, __int16 pulsePeriod, float pulseFraction, int type, char bEnableCollision);
@@ -126,9 +125,9 @@ VCMarkers::Init(void)
 {
 	int i = {};
 	C3dMarker* marker;
-	marker = m_aMarkerArray;
+	//marker = m_aMarkerArray;
 	// Init array
-	for (i = 0; i < MAX_NUM_3DMARKERS; i++) {
+	for (marker = m_aMarkerArray; marker < &m_aMarkerArray[MAX_NUM_3DMARKERS]; marker++) {
 		marker->m_vecLastPosition = CVector(0, 0, 0);
 		marker->m_pAtomic = nullptr;
 		marker->m_nType = MARKER3D_NA;
@@ -153,6 +152,7 @@ VCMarkers::Init(void)
 	}
 	ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 	MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
+	MarkersTransparency = (bool)GetPrivateProfileIntA("MAIN", "MarkersTransparency", MarkersTransparency, PLUGIN_PATH((char*)"VCMarkers.ini"));
 	memset(m_pRpClumpArray, 0, sizeof(RpClump * [7]));
 	NumActiveMarkers = 0;
 	m_angleDiamond = 0.0f;
@@ -169,7 +169,6 @@ VCMarkers::Init(void)
 	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting a new game
 	CTxdStore::PopCurrentTxd();
 }
-
 void
 VCMarkers::Render(void)
 {
@@ -179,8 +178,8 @@ VCMarkers::Render(void)
 	//static RwRGBAReal markerDirectional = { 0.0, 0.0, 0.0, 0.0 };
 	static RwRGBAReal& ambient = *(RwRGBAReal*)0xC80444; // STATICREF
 	static RwRGBAReal& directional = *(RwRGBAReal*)0xC80434; // STATICREF
-	RwRenderStateGet(rwRENDERSTATEALPHATESTFUNCTION, &alphafunc);
-	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)rwALPHATESTFUNCTIONALWAYS);
+	//RwRenderStateGet(rwRENDERSTATEALPHATESTFUNCTION, &alphafunc);
+	//RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)rwALPHATESTFUNCTIONALWAYS);
 	NumActiveMarkers = 0;
 	ActivateDirectional();
 	SetAmbientColours(&ambient);
@@ -208,24 +207,27 @@ VCMarkers::Render(void)
 						marker->m_mat.GetPosition() = pos;
 					}
 				}
-				
+
 				if (marker->m_nType == MARKER3D_CONE) {
 					CCoronas::RegisterCorona(reinterpret_cast<unsigned int>(marker) + 50 + 6 + (ReplaceEntranceMarkers ? 0 : 2), nullptr,
 						marker->m_colour.r, marker->m_colour.g, marker->m_colour.b, 192,
-						marker->m_mat.GetPosition(), 1.2f * marker->m_fSize, TheCamera.m_fLODDistMultiplier * 50.0f,
+						marker->m_mat.GetPosition(), 1.2f * marker->m_fSize, 50.0f * TheCamera.m_fLODDistMultiplier,
 						CORONATYPE_SHINYSTAR, FLARETYPE_NONE, true, false, 1, 0.0f, false, 1.5f, false, 255.0f, false, true);
 
 				}
-				NumActiveMarkers++;
 				marker->m_bIsUsed = false;
+				marker->m_bMustBeRenderedThisFrame = false;
+
+				NumActiveMarkers += 1;
 			}
-			else if (marker->m_pAtomic != NULL) {
+			else {
 				marker->DeleteMarkerObject();
 			}
+			
 		}
-		
+
 		DirectionArrowsDraw();
-		RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)alphafunc);
+		//RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*)alphafunc);
 	}
 }
 
@@ -233,12 +235,12 @@ void VCMarkers::PlaceMarkerSet(unsigned int nIndex, unsigned short markerID, CVe
 {
 	uint8_t r, g, b, a;
 	if (MagentaMarkers)
-		r = MARKER_SET_COLOR_R, g = MARKER_SET_COLOR_G, b = MARKER_SET_COLOR_B, a = MARKER_SET_COLOR_A;
+		r = MARKER_SET_COLOR_R, g = MARKER_SET_COLOR_G, b = MARKER_SET_COLOR_B;//, a = MARKER_SET_COLOR_A;
 	else
-		r = red, g = green, b = blue, a = alpha;
+		r = red, g = green, b = blue;//, a = alpha;
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, 1, 0.0, 0.0, 0.0, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.9f, red, green, blue, static_cast<unsigned char>(alpha * (1.0f / 3.0f)), pulsePeriod, pulseFraction, -1, 0.0, 0.0, 0.0, false);
-	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, a, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
+	PlaceMarker(nIndex, markerID, vecPos, fSize, r, g, b, alpha, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize, red, green, blue, alpha, pulsePeriod, pulseFraction, 1, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.93f, red, green, blue, alpha, pulsePeriod, pulseFraction, 2, 0.0f, 0.0f, 0.0f, false);
 	//PlaceMarker(nIndex, markerID, vecPos, fSize * 0.86f, red, green, blue, alpha, pulsePeriod, pulseFraction, -1, 0.0f, 0.0f, 0.0f, false);
@@ -273,9 +275,13 @@ VCMarker::Render(void)
 	RwFrameUpdateObjects(RpAtomicGetFrame(m_pAtomic));
 	CRGBA color2 = m_colour;
 	if (MagentaMarkers)
-		color2.r = MARKER_SET_COLOR_R, color2.g = MARKER_SET_COLOR_G, color2.b = MARKER_SET_COLOR_B, color2.a = MARKER_SET_COLOR_A;
+		color2.r = MARKER_SET_COLOR_R, color2.g = MARKER_SET_COLOR_G, color2.b = MARKER_SET_COLOR_B;//, color2.a = MARKER_SET_COLOR_A;
 	else
-		color2.r = m_colour.r, color2.g = m_colour.g, color2.b = m_colour.b, color2.a = m_colour.a;
+		color2.r = m_colour.r, color2.g = m_colour.g, color2.b = m_colour.b;//, color2.a = m_colour.a;
+	if (MarkersTransparency)
+		color2.a = MARKER_SET_COLOR_A;
+	else
+		color2.a = 255;
 	switch (m_nType) {
 	case MARKER3D_CONE:
 		m_colour.r = color2.r;
@@ -287,10 +293,10 @@ VCMarker::Render(void)
 	const auto color = reinterpret_cast<RGBA&>(m_colour).ToRwRGBA();
 	RpMaterialSetColor(m_pMaterial, &color);
 	m_mat.UpdateRW();
-	CMatrix mat;
-	mat.Attach(m_mat.m_pAttachMatrix, false);
-	mat.Scale(m_fSize);
-	mat.UpdateRW();
+	CMatrix matrix;
+	matrix.Attach(m_mat.m_pAttachMatrix, false);
+	matrix.Scale(m_fSize);
+	matrix.UpdateRW();
 	RwFrameUpdateObjects(RpClumpGetFrame(m_pAtomic));
 	SetBrightMarkerColours(m_fBrightness);
 	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)FALSE);
@@ -336,9 +342,9 @@ class VCMarkersSA {
 public:
 	VCMarkersSA() {
 		// Добавьте здесь код инициализации плагина
-		Events::initRwEvent += []() {
+		Events::initGameEvent += []() {
 			using namespace Memory;
-			//VCMarkers::Init();
+			VCMarkers::Init();
 
 			InjectHook(0x7269FA, VCMarkers::Init);
 			InjectHook(0x7250B1, &VCMarker::Render);
@@ -384,6 +390,11 @@ public:
 		Events::reInitGameEvent += []() { // To reload ini file by loading your save file
 			ReplaceEntranceMarkers = (bool)GetPrivateProfileIntA("MAIN", "ReplaceEntranceMarkers", ReplaceEntranceMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 			MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
+			MarkersTransparency = (bool)GetPrivateProfileIntA("MAIN", "MarkersTransparency", MarkersTransparency, PLUGIN_PATH((char*)"VCMarkers.ini"));
+		};
+
+		movingThingsEvent += []() {
+			VCMarkers::Render();
 		};
 	}
 } vCMarkersSA;
