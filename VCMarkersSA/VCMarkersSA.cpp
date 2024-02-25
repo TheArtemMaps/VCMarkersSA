@@ -159,12 +159,12 @@ VCMarkers::Init(void)
 	// Loading marker models & textures
 	CTxdStore::PushCurrentTxd();
 	CTxdStore::SetCurrentTxd(CTxdStore::FindTxdSlot("particle"));
-	CFileMgr::ChangeDir("\\");
+	//CFileMgr::ChangeDir("\\");
 	//LoadUser3dMarkers();
 	m_pRpClumpArray[MARKER3D_CYLINDER] = LoadMarker("cylinder");
 	m_pRpClumpArray[MARKER3D_TORUS] = LoadMarker("hoop");
 	m_pRpClumpArray[MARKER3D_ARROW] = LoadMarker("diamond_3");
-	m_pRpClumpArray[MARKER3D_CONE_NO_COLLISION] = m_pRpClumpArray[MARKER3D_ARROW];
+	m_pRpClumpArray[MARKER3D_CONE_NO_COLLISION] = LoadMarker("diamond_3");
 	m_pRpClumpArray[MARKER3D_CONE] = LoadMarker("arrow");
 	//CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff"); <-- crashes for some reason when starting a new game
 	CTxdStore::PopCurrentTxd();
@@ -392,7 +392,6 @@ public:
 			MagentaMarkers = (bool)GetPrivateProfileIntA("MAIN", "MagentaMarkers", MagentaMarkers, PLUGIN_PATH((char*)"VCMarkers.ini"));
 			MarkersTransparency = (bool)GetPrivateProfileIntA("MAIN", "MarkersTransparency", MarkersTransparency, PLUGIN_PATH((char*)"VCMarkers.ini"));
 		};
-
 		movingThingsEvent += []() {
 			VCMarkers::Render();
 		};
